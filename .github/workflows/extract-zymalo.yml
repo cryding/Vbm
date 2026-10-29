@@ -1,0 +1,51 @@
+name: Extract ZYMALO app source
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ZYMALO_Intelligence_Full_Upgrade.zip"
+      - ".github/workflows/extract-zymalo.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Extract project files
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          archive = Path("ZYMALO_Intelligence_Full_Upgrade.zip")
+          with zipfile.ZipFile(archive) as z:
+              root = Path(".")
+              for info in z.infolist():
+                  p = Path(info.filename)
+                  if len(p.parts) < 2 or p.parts[0] != "ZYMALO_Intelligence_Full_Upgrade":
+                      continue
+                  rel = Path(*p.parts[1:])
+                  if not rel.parts or rel.name == "tsconfig.tsbuildinfo":
+                      continue
+                  if rel.parts[0] in {".git", ".next", "node_modules"}:
+                      continue
+                  target = root / rel
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                  else:
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      target.write_bytes(z.read(info))
+          PY
+      - name: Commit extracted app source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app lib package.json tsconfig.json next.config.mjs next-env.d.ts .env.example .gitignore README.md
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Extract ZYMALO Intelligence app source for Vercel"
+          git push
